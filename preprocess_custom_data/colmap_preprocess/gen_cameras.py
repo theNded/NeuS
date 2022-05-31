@@ -71,10 +71,12 @@ if __name__ == '__main__':
     image_list = glob(os.path.join(work_dir, 'images/*.png'))
     image_list.sort()
 
-    for i, image_path in enumerate(image_list):
-        img = cv.imread(image_path)
+    pose2fname = np.load(os.path.join(work_dir, 'pose2fname.npy'))
+
+    for i, fname in enumerate(pose2fname):
+        img = cv.imread(os.path.join(work_dir, 'images', fname))
         cv.imwrite(os.path.join(out_dir, 'image', '{:0>3d}.png'.format(i)), img)
         cv.imwrite(os.path.join(out_dir, 'mask', '{:0>3d}.png'.format(i)), np.ones_like(img) * 255)
 
     np.savez(os.path.join(out_dir, 'cameras_sphere.npz'), **cam_dict)
-    print('Process done!')
+    # print('Process done!')

@@ -7,7 +7,7 @@ import cv2 as cv
 import trimesh
 import torch
 import torch.nn.functional as F
-from torch.utils.tensorboard import SummaryWriter
+from tensorboardX import SummaryWriter
 from shutil import copyfile
 from icecream import ic
 from tqdm import tqdm
