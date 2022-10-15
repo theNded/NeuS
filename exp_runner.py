@@ -42,7 +42,11 @@ class Runner:
         # Training parameters
         # self.end_iter = self.conf.get_int("train.end_iter")
         self.end_iter = args.nepoch * len(self.dataset.images)
-        print('Training {} epochs, {} iterations in total'.format(args.nepoch, self.end_iter))
+        print(
+            "Training {} epochs, {} iterations in total".format(
+                args.nepoch, self.end_iter
+            )
+        )
         self.save_freq = self.conf.get_int("train.save_freq")
         self.report_freq = self.conf.get_int("train.report_freq")
         self.val_freq = self.conf.get_int("train.val_freq")
@@ -296,7 +300,13 @@ class Runner:
             ),
         )
 
-    def validate_image(self, idx=-1, resolution_level=-1):
+    def validate_image(
+        self,
+        idx=-1,
+        resolution_level=-1,
+        output_dir="validations_fine",
+        output_normal_dir="normals",
+    ):
         if idx < 0:
             idx = np.random.randint(self.dataset.n_images)
 
@@ -355,24 +365,20 @@ class Runner:
             rot = np.linalg.inv(
                 self.dataset.pose_all[idx, :3, :3].detach().cpu().numpy()
             )
-            normal_img = (
-                np.matmul(rot[None, :, :], normal_img[:, :, None]).reshape(
-                    [H, W, 3, -1]
-                )
-                * 128
-                + 128
-            ).clip(0, 255)
+            normal_img = np.matmul(rot[None, :, :], normal_img[:, :, None]).reshape(
+                [H, W, 3, -1]
+            )
 
-        os.makedirs(os.path.join(self.base_exp_dir, "validations_fine"), exist_ok=True)
-        os.makedirs(os.path.join(self.base_exp_dir, "normals"), exist_ok=True)
+        os.makedirs(os.path.join(self.base_exp_dir, output_dir), exist_ok=True)
+        os.makedirs(os.path.join(self.base_exp_dir, output_normal_dir), exist_ok=True)
 
         for i in range(img_fine.shape[-1]):
             if len(out_rgb_fine) > 0:
                 cv.imwrite(
                     os.path.join(
                         self.base_exp_dir,
-                        "validations_fine",
-                        "{:0>8d}_{}_{}.png".format(self.iter_step, i, idx),
+                        output_dir,
+                        "w_gt_{:0>8d}_{}_{:04d}.png".format(self.iter_step, i, idx),
                     ),
                     np.concatenate(
                         [
@@ -383,12 +389,30 @@ class Runner:
                         ]
                     ),
                 )
+
+                cv.imwrite(
+                    os.path.join(
+                        self.base_exp_dir,
+                        output_dir,
+                        "wo_gt_{:0>8d}_{}_{:04d}.png".format(self.iter_step, i, idx),
+                    ),
+                    img_fine[..., i],
+                )
+
             if len(out_normal_fine) > 0:
                 cv.imwrite(
                     os.path.join(
                         self.base_exp_dir,
-                        "normals",
-                        "{:0>8d}_{}_{}.png".format(self.iter_step, i, idx),
+                        output_normal_dir,
+                        "{:0>8d}_{}_{:04d}.png".format(self.iter_step, i, idx),
+                    ),
+                    (normal_img[..., i] * 128 + 128).clip(0, 255),
+                )
+                np.save(
+                    os.path.join(
+                        self.base_exp_dir,
+                        output_normal_dir,
+                        "{:0>8d}_{}_{:04d}.png".format(self.iter_step, i, idx),
                     ),
                     normal_img[..., i],
                 )
@@ -429,14 +453,14 @@ class Runner:
         )
         return img_fine
 
-    def validate_mesh(self, world_space=False, resolution=64, threshold=0.0):
+    def validate_mesh(self, world_space=False, resolution=64, threshold=0.0, output_dir="meshes"):
         bound_min = torch.tensor(self.dataset.object_bbox_min, dtype=torch.float32)
         bound_max = torch.tensor(self.dataset.object_bbox_max, dtype=torch.float32)
 
         vertices, triangles = self.renderer.extract_geometry(
             bound_min, bound_max, resolution=resolution, threshold=threshold
         )
-        os.makedirs(os.path.join(self.base_exp_dir, "meshes"), exist_ok=True)
+        os.makedirs(os.path.join(self.base_exp_dir, output_dir), exist_ok=True)
 
         if world_space:
             vertices = (
@@ -447,7 +471,7 @@ class Runner:
         mesh = trimesh.Trimesh(vertices, triangles)
         mesh.export(
             os.path.join(
-                self.base_exp_dir, "meshes", "{:0>8d}.ply".format(self.iter_step)
+                self.base_exp_dir, output_dir, "{:0>8d}.ply".format(self.iter_step)
             )
         )
 
@@ -499,7 +523,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--conf", type=str, default="./confs/base.conf")
-    parser.add_argument('--nepoch', type=int, default=1000)
+    parser.add_argument("--nepoch", type=int, default=1000)
     parser.add_argument("--data_dir", type=str, required=True)
     parser.add_argument("--mode", type=str, default="train")
     parser.add_argument("--mcube_threshold", type=float, default=0.0)
@@ -516,8 +540,13 @@ if __name__ == "__main__":
         runner.train()
     elif args.mode == "validate_mesh":
         runner.validate_mesh(
-            world_space=True, resolution=512, threshold=args.mcube_threshold
+            world_space=True, resolution=512, threshold=args.mcube_threshold,
+            output_dir="eval_mesh",
         )
+    elif args.mode == "evaluate_all":
+        print(runner.dataset.n_images)
+        for i in range(len(runner.dataset.images)):
+            runner.validate_image(i, 1, output_dir="eval_image", output_normal_dir="eval_normal_image")
     elif args.mode.startswith(
         "interpolate"
     ):  # Interpolate views given two image indices
